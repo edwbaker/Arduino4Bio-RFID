@@ -1,78 +1,77 @@
-// RFID reader ID-12 for Arduino 
-// Based on code by BARRAGAN <http://people.interaction-ivrea.it/h.barragan> 
-// and code from HC Gilje - http://hcgilje.wordpress.com/resources/rfid_id12_tagreader/
-// Modified for Arudino by djmatic
-// Modified for ID-12 and checksum by Martijn The - http://www.martijnthe.nl/
-//
-// Use the drawings from HC Gilje to wire up the ID-12.
-// Remark: disconnect the rx serial wire to the ID-12 when uploading the sketch
-
-
 void setup() {
-  Serial.begin(9600);                                 // connect to the serial port
+  Serial.begin(9600); //This is the speed at which the ID-12LA's serial connection operates
 }
 
 void loop () {
+  //We declare these variables here so their values are set on each iteration of the loop() function
   byte i = 0;
   byte val = 0;
-  byte code[6];
+  byte tag_id[6];
   byte checksum = 0;
   byte bytesread = 0;
   byte tempbyte = 0;
 
+  //Check to see if Serial has available data
   if(Serial.available() > 0) {
-    if((val = Serial.read()) == 2) {                  // check for header 
+    //The transmission begins with a 'Start of Text' character (ASCII code = 2)
+    if((val = Serial.read()) == 2) {
+      //We want to read the next 12 ASCII characters (5 hexadecimal bytes followed by a checksum: each hexadecimal byte is two ASCII characters)
       bytesread = 0; 
-      while (bytesread < 12) {                        // read 10 digit code + 2 digit checksum
-        if( Serial.available() > 0) { 
+      while (bytesread < 12) {
+        //Check that the next byte is ready to be read by the Arduino
+        if( Serial.available() > 0) {
+          //Read the next characters
           val = Serial.read();
-          if((val == 0x0D)||(val == 0x0A)||(val == 0x03)||(val == 0x02)) { // if header or stop bytes before the 10 digit reading 
-            break;                                    // stop reading
+          
+          //If we get a carriage return, line feed, Start of Text or End of Text before receiving 12 normal ASCII characters then stop
+          if((val == 0x0D)||(val == 0x0A)||(val == 0x03)||(val == 0x02)) { 
+            break;
           }
 
-          // Do Ascii/Hex conversion:
+          // Convert ASCII recieved to hexadecimal for display
           if ((val >= '0') && (val <= '9')) {
             val = val - '0';
           } else if ((val >= 'A') && (val <= 'F')) {
             val = 10 + val - 'A';
           }
 
-          // Every two hex-digits, add byte to code:
-          if (bytesread & 1 == 1) {
-            // make some space for this hex-digit by
-            // shifting the previous hex-digit with 4 bits to the left:
-            code[bytesread >> 1] = (val | (tempbyte << 4));
-
-            if (bytesread >> 1 != 5) {                // If we're at the checksum byte,
-              checksum ^= code[bytesread >> 1];       // Calculate the checksum... (XOR)
+          //When we recieve two ASCII codes convert them to a single hexadecimal number
+          if (bytesread & 1 == 1) { //This is a bitwise method of seeing if bytesread is even
+            //Store the hexadecimal value in tag_id
+            tag_id[bytesread >> 1] = (val | (tempbyte << 4));
+            
+            //If we're not at the checksum byte, we need to calculate the checksum
+            if (bytesread >> 1 != 5) {
+              checksum ^= tag_id[bytesread >> 1];
             };
+            
+          //If we have not yet recieved the next pair of ASCII characters store the single value we just read
           } else {
-            tempbyte = val;                           // Store the first hex digit first...
+            tempbyte = val;
           };
 
-          bytesread++;                                // ready to read next digit
+          //Move to the next chracter to read
+          bytesread++;
         } 
       } 
 
-      // Output to Serial:
-
-      if (bytesread == 12) {                          // if 12 digit read is complete
-        Serial.print("5-byte code: ");
-        for (i=0; i<5; i++) {
-          if (code[i] < 16) Serial.print("0");
-          Serial.print(code[i], HEX);
-          Serial.print(" ");
+      //If we have read 12 bytes we have the tag id and the checksum
+      if (bytesread == 12) {
+        //If our checksum matches the recieved checksum
+        if (tag_id[5] == checksum) {
+          for (i=0; i<5; i++) {
+            if (tag_id[i] < 16) Serial.print("0");
+            Serial.print(tag_id[i], HEX);
+            Serial.print(" ");
+          }
+          Serial.println();
+        } else {
+          Serial.println("Checksum failed");
         }
-        Serial.println();
-
-        Serial.print("Checksum: ");
-        Serial.print(code[5], HEX);
-        Serial.println(code[5] == checksum ? " -- passed." : " -- error.");
-        Serial.println();
-        
+      //Reset bytesread
+      bytesread = 0;
       }
 
-      bytesread = 0;
     }
   }
 }
